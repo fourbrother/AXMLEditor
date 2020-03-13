@@ -1,7 +1,9 @@
 package cn.wjdiankong.chunk;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
+import cn.wjdiankong.main.ParserChunkUtils;
 import cn.wjdiankong.main.Utils;
 
 public class StringChunk {
@@ -35,12 +37,11 @@ public class StringChunk {
 		src = Utils.addByte(src, stylePoolOffset);
 		
 		byte[] strOffsets = new byte[0];
-		ArrayList<String> convertList = convertStrList(strList);
-		
+
 		int len = 0;
-		for(int i=0;i<convertList.size();i++){
+		for(int i=0;i<strList.size();i++){
 			strOffsets = Utils.addByte(strOffsets, Utils.int2Byte(len));
-			len += (convertList.get(i).length()+4);//这里的4包括字符串头部的字符串长度2个字节，和字符串结尾的2个字节
+			len += (strList.get(i).length() * 2 + 4);//这里的4包括字符串头部的字符串长度2个字节，和字符串结尾的2个字节
 		}
 		
 		src = Utils.addByte(src, strOffsets);//写入string offsets值
@@ -140,11 +141,19 @@ public class StringChunk {
 		while(chunk.stringContentList.size() < chunkStringCount){
 			//一个字符对应两个字节，所以要乘以2
 			int stringSize = Utils.byte2Short(Utils.copyByte(chunkStringContentByte, endStringIndex, 2))*2;
-			byte[] temp = Utils.copyByte(chunkStringContentByte, endStringIndex+2, stringSize+2);
-			String str = new String(temp);
+			String str;
+			if (stringSize == 0) {
+				// 空字符串
+				str = "";
+			}else{
+				byte[] temp = Utils.copyByte(chunkStringContentByte, endStringIndex + 2, stringSize);
+				str = new String(temp, StandardCharsets.UTF_16LE);
+			}
 			chunk.stringContentList.add(Utils.filterStringNull(str));
 			endStringIndex += (2+stringSize+2);
 		}
+		// 最后再跳过两位00
+		endStringIndex += 2;
 		
 		int len = 0;
 		for(String str : chunk.stringContentList){
@@ -152,8 +161,8 @@ public class StringChunk {
 			len += str.length()*2;
 			len += 2;
 		}
-		chunk.strPool = Utils.copyByte(byteSrc, stringContentStart, len);
-		int stylePool = stringContentStart + len;
+		chunk.strPool = Utils.copyByte(byteSrc, stringContentStart, endStringIndex);
+		int stylePool = stringContentStart + endStringIndex;
 		
 		chunk.stylePool = Utils.copyByte(byteSrc, stylePool, chunkSize-(stylePool));
 		
@@ -162,16 +171,17 @@ public class StringChunk {
 	
 	private byte[] getStrListByte(ArrayList<String> strList){
 		byte[] src = new byte[0];
-		ArrayList<String> stringContentList = convertStrList(strList);
-		for(int i=0;i<stringContentList.size();i++){
+		for(int i=0;i<strList.size();i++){
+			String str = strList.get(i);
 			byte[] tempAry = new byte[0];
-			short len = (short)(stringContentList.get(i).length()/2);
+			short len = (short) str.length();
 			byte[] lenAry = Utils.shortToByte(len);
 			tempAry = Utils.addByte(tempAry, lenAry);
-			tempAry = Utils.addByte(tempAry, stringContentList.get(i).getBytes());
-			tempAry = Utils.addByte(tempAry, new byte[]{0,0});
+			tempAry = Utils.addByte(tempAry, str.getBytes(StandardCharsets.UTF_16LE));
+			tempAry = Utils.addByte(tempAry, new byte[]{0, 0});
 			src = Utils.addByte(src, tempAry);
 		}
+		src = Utils.addByte(src, new byte[]{0, 0});
 		return src;
 	}
 	
